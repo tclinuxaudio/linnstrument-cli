@@ -1,10 +1,10 @@
 mod project;
 
-use project::{is_likely_linnstrument, is_linnstrument_vid_pid};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use project::{is_likely_linnstrument, is_linnstrument_vid_pid};
 use serde::Serialize;
-use serialport::{available_ports, SerialPortType};
+use serialport::{SerialPortType, available_ports};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -129,12 +129,11 @@ fn list_devices(json: bool) -> Result<()> {
                 candidate.vid = Some(usb.vid);
                 candidate.pid = Some(usb.pid);
 
-                candidate.likely_linnstrument =
-                    is_linnstrument_vid_pid(usb.vid, usb.pid)
-                        || is_likely_linnstrument(
-                            candidate.manufacturer.as_deref(),
-                            candidate.product.as_deref(),
-                        );
+                candidate.likely_linnstrument = is_linnstrument_vid_pid(usb.vid, usb.pid)
+                    || is_likely_linnstrument(
+                        candidate.manufacturer.as_deref(),
+                        candidate.product.as_deref(),
+                    );
             }
 
             candidate

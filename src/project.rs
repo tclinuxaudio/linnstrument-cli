@@ -1,5 +1,5 @@
-use anyhow::{bail, ensure, Context, Result};
-use serialport::{available_ports, SerialPort, SerialPortType};
+use anyhow::{Context, Result, bail, ensure};
+use serialport::{SerialPort, SerialPortType, available_ports};
 use std::fs;
 use std::io::{ErrorKind, Read, Write};
 use std::path::Path;
@@ -53,10 +53,7 @@ impl LinnStrument {
 
                     eprintln!("Waiting for LinnStrument to reappear...");
 
-                    port_name = wait_for_reenumerated_port(
-                        &port_name,
-                        PORT_SEARCH_TIMEOUT,
-                    )?;
+                    port_name = wait_for_reenumerated_port(&port_name, PORT_SEARCH_TIMEOUT)?;
                 }
             }
         }
@@ -100,11 +97,7 @@ impl LinnStrument {
         Ok(())
     }
 
-    pub fn save_project(
-        &mut self,
-        project_index: u8,
-        output_path: impl AsRef<Path>,
-    ) -> Result<()> {
+    pub fn save_project(&mut self, project_index: u8, output_path: impl AsRef<Path>) -> Result<()> {
         validate_project_index(project_index)?;
 
         self.write_command(b'j')?;
@@ -118,9 +111,7 @@ impl LinnStrument {
         self.expect_ack("project index")?;
 
         let version = self.read_u8().context("could not read project version")?;
-        let project_size = self
-            .read_i32_le()
-            .context("could not read project size")?;
+        let project_size = self.read_i32_le().context("could not read project size")?;
 
         ensure!(
             project_size >= 0,
@@ -174,19 +165,14 @@ impl LinnStrument {
 
             project_data.extend_from_slice(&block);
 
-            println!(
-                "Read {}/{} bytes",
-                project_data.len(),
-                project_size
-            );
+            println!("Read {}/{} bytes", project_data.len(), project_size);
         }
 
         self.expect_ack("project transfer completion")?;
 
         let total_crc = crc32(&project_data);
 
-        let mut file =
-            Vec::with_capacity(1 + 4 + project_data.len() + 4);
+        let mut file = Vec::with_capacity(1 + 4 + project_data.len() + 4);
 
         file.push(version);
         file.extend_from_slice(&(project_size as i32).to_le_bytes());
@@ -204,16 +190,11 @@ impl LinnStrument {
         Ok(())
     }
 
-    pub fn load_project(
-        &mut self,
-        project_index: u8,
-        input_path: impl AsRef<Path>,
-    ) -> Result<()> {
+    pub fn load_project(&mut self, project_index: u8, input_path: impl AsRef<Path>) -> Result<()> {
         validate_project_index(project_index)?;
 
-        let file = fs::read(input_path.as_ref()).with_context(|| {
-            format!("could not read {}", input_path.as_ref().display())
-        })?;
+        let file = fs::read(input_path.as_ref())
+            .with_context(|| format!("could not read {}", input_path.as_ref().display()))?;
 
         let project = ProjectFile::parse(&file)?;
 
@@ -270,9 +251,7 @@ impl LinnStrument {
         self.expect_ack("read-settings command")?;
 
         // The size reported by the device includes the version byte.
-        let settings_size = self
-            .read_i32_le()
-            .context("could not read settings size")?;
+        let settings_size = self.read_i32_le().context("could not read settings size")?;
 
         ensure!(
             settings_size >= 1,
@@ -319,33 +298,27 @@ impl LinnStrument {
                 }
 
                 // 2.0.0-beta3 and later negotiate a CRC per block.
-                v if v >= 10 => {
-                    loop {
-                        match self.negotiate_incoming_crc(&block)? {
-                            CrcResult::Accepted => break,
+                v if v >= 10 => loop {
+                    match self.negotiate_incoming_crc(&block)? {
+                        CrcResult::Accepted => break,
 
-                            CrcResult::Retry => {
-                                eprintln!(
-                                    "CRC rejected at offset {offset}; \
+                        CrcResult::Retry => {
+                            eprintln!(
+                                "CRC rejected at offset {offset}; \
                                      waiting for retransmitted block"
-                                );
+                            );
 
-                                self.read_block(&mut block, offset)?;
-                            }
+                            self.read_block(&mut block, offset)?;
                         }
                     }
-                }
+                },
 
                 other => bail!("unsupported settings version: {other}"),
             }
 
             settings_data.extend_from_slice(&block);
 
-            println!(
-                "Read {}/{} bytes",
-                settings_data.len(),
-                settings_size
-            );
+            println!("Read {}/{} bytes", settings_data.len(), settings_size);
         }
 
         self.expect_ack("settings transfer completion")?;
@@ -375,9 +348,8 @@ impl LinnStrument {
     }
 
     pub fn load_settings(&mut self, input_path: impl AsRef<Path>) -> Result<()> {
-        let file = fs::read(input_path.as_ref()).with_context(|| {
-            format!("could not read {}", input_path.as_ref().display())
-        })?;
+        let file = fs::read(input_path.as_ref())
+            .with_context(|| format!("could not read {}", input_path.as_ref().display()))?;
 
         let settings = SettingsFile::parse(&file)?;
 
@@ -437,9 +409,7 @@ impl LinnStrument {
             loop {
                 self.port
                     .write_all(block)
-                    .with_context(|| {
-                        format!("could not write block at offset {offset}")
-                    })?;
+                    .with_context(|| format!("could not write block at offset {offset}"))?;
 
                 self.port.flush()?;
 
@@ -607,35 +577,28 @@ impl LinnStrument {
             b'o' => Ok(CrcResult::Accepted),
             b'w' => Ok(CrcResult::Retry),
 
-            other => bail!(
-                "expected CRC result 'o' or 'w', received 0x{other:02x}"
-            ),
+            other => bail!("expected CRC result 'o' or 'w', received 0x{other:02x}"),
         }
     }
 }
 
-fn wait_for_reenumerated_port(
-    previous_port: &str,
-    timeout: Duration,
-) -> Result<String> {
+fn wait_for_reenumerated_port(previous_port: &str, timeout: Duration) -> Result<String> {
     let deadline = Instant::now() + timeout;
     let mut previous_was_absent = false;
 
     loop {
         let ports = available_ports().unwrap_or_default();
 
-        let previous_present = ports
-            .iter()
-            .any(|port| port.port_name == previous_port);
+        let previous_present = ports.iter().any(|port| port.port_name == previous_port);
 
         if !previous_present {
             previous_was_absent = true;
         }
 
         if previous_was_absent
-            && let Some(port) = ports.iter().find(|port| {
-                is_likely_linnstrument_port(&port.port_type)
-            })
+            && let Some(port) = ports
+                .iter()
+                .find(|port| is_likely_linnstrument_port(&port.port_type))
         {
             return Ok(port.port_name.clone());
         }
@@ -679,10 +642,7 @@ pub fn is_linnstrument_vid_pid(vid: u16, pid: u16) -> bool {
 /// Heuristic: does a device with these USB manufacturer/product strings
 /// look like a LinnStrument? Shared between `list` (main.rs) and the
 /// re-enumeration search here.
-pub fn is_likely_linnstrument(
-    manufacturer: Option<&str>,
-    product: Option<&str>,
-) -> bool {
+pub fn is_likely_linnstrument(manufacturer: Option<&str>, product: Option<&str>) -> bool {
     let text = format!(
         "{} {}",
         manufacturer.unwrap_or_default(),
@@ -700,10 +660,7 @@ fn is_likely_linnstrument_port(port_type: &SerialPortType) -> bool {
     match port_type {
         SerialPortType::UsbPort(info) => {
             is_linnstrument_vid_pid(info.vid, info.pid)
-                || is_likely_linnstrument(
-                    info.manufacturer.as_deref(),
-                    info.product.as_deref(),
-                )
+                || is_likely_linnstrument(info.manufacturer.as_deref(), info.product.as_deref())
         }
 
         _ => false,
@@ -730,13 +687,9 @@ impl<'a> ProjectFile<'a> {
 
         let version = file[0];
 
-        ensure!(
-            version >= 10,
-            "unsupported project version: {version}"
-        );
+        ensure!(version >= 10, "unsupported project version: {version}");
 
-        let declared_size =
-            i32::from_le_bytes(file[1..5].try_into().unwrap());
+        let declared_size = i32::from_le_bytes(file[1..5].try_into().unwrap());
 
         ensure!(
             declared_size >= 0,
@@ -757,8 +710,7 @@ impl<'a> ProjectFile<'a> {
         let data_end = data_start + declared_size;
         let data = &file[data_start..data_end];
 
-        let stored_crc =
-            u32::from_le_bytes(file[data_end..data_end + 4].try_into().unwrap());
+        let stored_crc = u32::from_le_bytes(file[data_end..data_end + 4].try_into().unwrap());
 
         let actual_crc = crc32(data);
 
@@ -787,13 +739,9 @@ impl<'a> SettingsFile<'a> {
 
         let version = file[0];
 
-        ensure!(
-            version >= 10,
-            "unsupported settings version: {version}"
-        );
+        ensure!(version >= 10, "unsupported settings version: {version}");
 
-        let declared_size =
-            i32::from_le_bytes(file[1..5].try_into().unwrap());
+        let declared_size = i32::from_le_bytes(file[1..5].try_into().unwrap());
 
         ensure!(
             declared_size >= 0,
@@ -814,10 +762,7 @@ impl<'a> SettingsFile<'a> {
         let data_end = data_start + declared_size;
         let data = &file[data_start..data_end];
 
-        let stored_crc =
-            u32::from_le_bytes(
-                file[data_end..data_end + 4].try_into().unwrap()
-            );
+        let stored_crc = u32::from_le_bytes(file[data_end..data_end + 4].try_into().unwrap());
 
         let actual_crc = crc32(data);
 
